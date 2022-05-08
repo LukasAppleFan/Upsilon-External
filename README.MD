@@ -1,3 +1,9 @@
+Just a fork that fixed some icons regarding the icon pixel shift bug in Omega/Upsilon
+
+"Fixed" : KhiCAS, Nofrendo, Peanut-GB
+
+This fork also removes BadApple and replaces it with a Unit Circle app (very barebone).
+
 # Epsilon
 
 The base firmware image is a fork of https://github.com/numworks/epsilon including
