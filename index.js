@@ -272,6 +272,8 @@ angular.module('nwas', ['ngSanitize', 'pascalprecht.translate']).controller('mai
       let linkerScript = await loadLinkerScript();
       let address = 0;
       let tar = new tarball.TarWriter();
+      
+      let icon_support = document.getElementById("check-icons-support").checked;
 
       for(let i = 0; i < applications.length; i++) {
         let app = applications[i];
@@ -284,16 +286,18 @@ angular.module('nwas', ['ngSanitize', 'pascalprecht.translate']).controller('mai
         console.log("Taring", app.name)
         tar.addFileArrayBuffer(app.name, binary, {mode: "775"});
         
-        let resp = await $http.get("apps/" + app.name + "/app.icon", {responseType: "arraybuffer"});
-        
-        files.push({
-            name: app.name + ".icon",
-            binary: resp.data
-        });
+        if (icon_support) {
+          let resp = await $http.get("apps/" + app.name + "/app.icon", {responseType: "arraybuffer"});
+          
+          files.push({
+              name: app.name + ".icon",
+              binary: resp.data
+          });
+        }
         
       }
       if(wallpaper != null) {
-        console.log("Inlining wallpaper");
+        console.log("Inling wallpaper");
         $scope.$apply(function() {
           $scope.lastAction = $translate.instant("ADDING") + " " + wallpaper.name;
         });
@@ -390,14 +394,7 @@ angular.module('nwas', ['ngSanitize', 'pascalprecht.translate']).controller('mai
         });
         let archive = await buildArchive($scope.selectedApps, $scope.wallpaper, $scope.customFiles);
         console.log("Archive", archive);
-
-        if (archive.length > 0x90400000 - 0x90200000 && dfu.findDeviceDfuInterfaces(selectedDevice).length == 1 && selectedDevice.productName == 'Upsilon Calculator') {
-          // It's a version of upsilon with the bootloader, but the dfu is executed from a slot, so a part of the flash memory is locked
-          throw Error($translate.instant("TOO_BIG_FILES"))
-        }
-
         await uploadFile(selectedDevice, "@External Flash /0x90200000/32*064Kg,64*064Kg", archive, false);
-
         $scope.$apply(function() {
           $scope.allDone = true;
         });
@@ -417,7 +414,7 @@ angular.module('nwas', ['ngSanitize', 'pascalprecht.translate']).controller('mai
   };
 
   $scope.getFile = function getFile(el) {
-    for (let i = 0; i < el[0].files.length; i++) {
+    for (let i = 0; i < el[0].files.length; i++) { 
       let file = el[0].files[i];
       let reader = new FileReader();
 
@@ -444,6 +441,47 @@ angular.module('nwas', ['ngSanitize', 'pascalprecht.translate']).controller('mai
         }
       });
     }
+  };
+
+  let loadFirmwareFile = function loadFirmwareFile(file) {
+    return new Promise(function (resolve, reject) {
+      $http.get(file, {responseType: "arraybuffer"})
+      .then(function(response) {
+        resolve(response.data);
+      }, function(error) {
+        console.log(error);
+        reject("Unable to load firmware file");
+      });
+    });
+  }
+
+  $scope.uploadFirmware = function uploadFirmware(version) {
+    delete $scope.error;
+    navigator.usb.requestDevice({
+      filters: [{
+        vendorId: 0x0483,
+        productId: 0xa291
+      }]
+    }).then(
+      async selectedDevice => {
+        console.log("Selected device", selectedDevice);
+        $scope.$apply(function() {
+          $scope.uploading = true;
+        });
+        let internal = await loadFirmwareFile("firmware/" + version + ".internal.bin");
+        let external = await loadFirmwareFile("firmware/" + version + ".external.bin");
+        await uploadFile(selectedDevice, "@External Flash /0x90000000/08*004Kg,01*032Kg,31*064Kg", external, false);
+        await uploadFile(selectedDevice, "@Internal Flash /0x08000000/04*016Kg", internal, true);
+        $scope.$apply(function() {
+          $scope.allDone = true;
+        });
+      }
+    ).catch(error => {
+      $scope.$apply(function() {
+        $scope.error = error;
+        $scope.allDone = false;
+      });
+    });
   };
 
 }).directive("ngFileSelect", function() {
@@ -492,11 +530,10 @@ angular.module('nwas', ['ngSanitize', 'pascalprecht.translate']).controller('mai
       DFU_WROTE: "Done",
       TOO_MUCH_FILES: "Not enough space on the device",
       OR: "or",
+      CHECK_ICONS: "Enable experimental icons support.",
       CROP_IMAGE_TITLE: "Crop wallpaper",
       CROP_IMAGE_SAVE: "Save",
-      CANCEL: "Cancel",
-      CONTINUE: "Continue",
-      TOO_BIG_FILES: "You are writing a large amount of files to your calculator. If you are using a recent version of Upsilon, you must go through the bootloader (reset button on the back) to make sure that the files will not be written over running code."
+      CROP_IMAGE_CANCEL: "Cancel",
     })
     .translations('fr', {
       TITLE: 'Dépôt d\'application N0110 non officiel',
@@ -524,10 +561,10 @@ angular.module('nwas', ['ngSanitize', 'pascalprecht.translate']).controller('mai
       DFU_WROTE: "Terminé",
       TOO_MUCH_FILES: "Pas assez de place sur l'appareil",
       OR: "ou",
+      CHECK_ICONS: "Activer le support des icons (Expérimental)",
       CROP_IMAGE_TITLE: "Recadrer le fond d'écran",
       CROP_IMAGE_SAVE: "Sauvegarder",
-      CANCEL: "Annuler",
-      TOO_BIG_FILES: "Vous écrivez une grande quantité de fichiers sur votre calculatrice. Si vous utilisez une version récente d'Upsilon, vous devez passer par le bootloader (bouton de réinitialisation à l'arrière) pour vous assurer que les fichiers ne seront pas écrits dans du code en cours d'exécution."
+      CROP_IMAGE_CANCEL: "Annuler",
     })
     .registerAvailableLanguageKeys(['en', 'fr'], {
       'en_*': 'en',
